@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bill Drop POS</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+
+<body class="bg-white w-screen h-screen overflow-hidden">
+
+<div id="customerPage" class="hidden w-screen min-h-screen bg-gray-100 p-4 overflow-y-auto"></div>
+
+<div id="loginPage" class="w-screen h-screen flex items-center justify-center bg-white">
+  <div class="w-[420px] border rounded-3xl shadow-2xl p-8 bg-white">
+    <h1 class="text-4xl font-extrabold text-purple-700 text-center">Bill Drop</h1>
+    <p class="text-gray-500 text-center mt-2 mb-8">Merchant Login</p>
+    <input id="merchantId" value="BDR001" placeholder="Merchant ID" class="border p-4 w-full rounded-xl mb-4">
+    <input id="merchantPassword" type="password" placeholder="Password" class="border p-4 w-full rounded-xl mb-4">
+    <button onclick="merchantLogin()" class="bg-purple-700 hover:bg-purple-800 text-white px-4 py-4 w-full rounded-xl font-bold">Login</button>
+    <p class="text-xs text-gray-400 text-center mt-4">Demo ID: BDR001 | Password: 081619</p>
+  </div>
+</div>
+
+<div id="qrPage" class="hidden w-screen h-screen bg-white p-8 overflow-y-auto">
+  <div class="max-w-6xl mx-auto grid grid-cols-2 gap-8 items-start">
+    <div class="border rounded-3xl shadow-xl p-6 bg-white">
+      <h2 class="text-3xl font-extrabold text-purple-700 mb-2">Customer Bill Details</h2>
+      <p class="text-gray-500 mb-4">Merchant bill preview</p>
+      <div id="qrBillDetails" class="space-y-2 text-sm"></div>
+      <button onclick="backToPOS()" class="mt-6 border border-purple-700 text-purple-700 px-4 py-3 rounded-xl font-bold w-full">Back to POS</button>
+    </div>
+    <div class="border rounded-3xl shadow-xl p-6 bg-white text-center">
+      <h2 class="text-3xl font-extrabold text-purple-700 mb-3">Scan To View Receipt</h2>
+      <canvas id="qr" class="border mx-auto rounded-xl p-3"></canvas>
+    </div>
+  </div>
+</div>
+
+<div id="posPage" class="hidden grid grid-cols-12 h-screen overflow-hidden">
+
+<div class="col-span-8 p-5 overflow-y-auto bg-white border-r">
+  <div class="flex justify-between items-center mb-5">
+    <div>
+      <h1 class="text-4xl font-extrabold text-purple-700">Bill Drop POS</h1>
+      <p class="text-gray-500">Supermarket Digital Billing System</p>
+    </div>
+    <div class="bg-purple-100 text-purple-700 px-5 py-3 rounded-xl font-bold">
+      Today Sales: ₹<span id="salesCounter">0</span>
+    </div>
+    <button onclick="logoutMerchant()" class="border border-purple-700 text-purple-700 px-4 py-3 rounded-xl font-bold">Logout</button>
+  </div>
+
+  <input id="searchInput" onkeyup="renderProducts()" placeholder="Search products..."
+  class="border p-3 w-full rounded-xl mb-4 shadow-sm">
+
+  <div id="categoryBox" class="flex gap-3 mb-5 flex-wrap"></div>
+  <div id="productGrid" class="grid grid-cols-4 gap-5"></div>
+</div>
+
+<div class="col-span-4 p-5 flex flex-col bg-white h-screen overflow-y-auto">
+  <div class="flex justify-between items-center mb-4">
+    <h2 class="text-2xl font-bold text-purple-700">Billing Dashboard</h2>
+    <span id="receiptNo" class="text-sm bg-gray-100 px-3 py-1 rounded-full"></span>
+  </div>
+
+  <input id="customerName" placeholder="Customer Name" class="border p-3 w-full rounded-xl mb-3">
+  <input id="mobile" placeholder="Customer Mobile Number" class="border p-3 w-full rounded-xl mb-4">
+
+  <div id="cart" class="flex-1 overflow-y-auto min-h-[250px]"></div>
+
+  <div class="border-t pt-4 mt-4">
+    <div class="space-y-2 text-lg">
+      <div class="flex justify-between"><span>Subtotal</span><span>₹<span id="subtotal">0</span></span></div>
+      <div class="flex justify-between"><span>Discount</span><span>- ₹<span id="discount">0</span></span></div>
+      <div class="flex justify-between"><span>GST 5%</span><span>₹<span id="gst">0</span></span></div>
+      <div class="flex justify-between text-2xl font-bold text-purple-700">
+        <span>Total</span><span>₹<span id="total">0</span></span>
+      </div>
+    </div>
+
+    <div class="mt-4 bg-gray-50 p-3 rounded-xl">
+      <label><input type="radio" name="payment" value="Cash" checked> Cash</label><br>
+      <label><input type="radio" name="payment" value="UPI"> UPI QR</label>
+    </div>
+
+    <button onclick="generateBill()" class="bg-purple-700 hover:bg-purple-800 text-white px-4 py-3 mt-4 w-full rounded-xl font-bold">
+      Generate Payment
+    </button>
+
+
+    <button onclick="clearBill()" class="border border-red-500 text-red-600 px-4 py-3 mt-3 w-full rounded-xl font-bold">
+      Clear Bill
+    </button>
+
+  </div>
+</div>
+
+</div>
+
+<script>
+
+const firebaseConfig = {
+  apiKey: "PASTE_FIREBASE_API_KEY",
+  authDomain: "PASTE_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://PASTE_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId: "PASTE_PROJECT_ID",
+  storageBucket: "PASTE_PROJECT_ID.appspot.com",
+  messagingSenderId: "PASTE_SENDER_ID",
+  appId: "PASTE_APP_ID"
+};
+
+let db = null;
+try {
+  if (!firebaseConfig.apiKey.includes("PASTE")) {
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+  }
+} catch (error) {
+  console.log("Firebase connection error:", error);
+}
+
+function merchantLogin() {
+  const id = document.getElementById("merchantId").value.trim();
+  const pass = document.getElementById("merchantPassword").value.trim();
+  if (id === "BDR001" && pass === "081619") {
+    document.getElementById("loginPage").classList.add("hidden");
+    document.getElementById("posPage").classList.remove("hidden");
+  } else {
+    alert("Wrong Merchant ID or Password");
+  }
+}
+
+function logoutMerchant() {
+  document.getElementById("posPage").classList.add("hidden");
+  document.getElementById("qrPage").classList.add("hidden");
+  document.getElementById("loginPage").classList.remove("hidden");
+}
+
+const TELEGRAM_BOT_TOKEN = "8636087988:AAEDaswUK8cauFnvD3IVaaDJy6u4Vc2oi2w";
+const TELEGRAM_CHAT_ID = "7775284485";
+const UPI_ID = "ammubharathi0207@okhdfcbank";
+
+let selectedCategory = "All";
+let todaySales = 0;
+let cart = [];
+let receiptNumber = "BDR" + new Date().getFullYear() + Math.floor(Math.random() * 9000 + 1000);
+document.getElementById("receiptNo").innerText = receiptNumber;
+
+let rawProducts = [];
+
+function addProducts(category, brand, names) {
+  names.forEach((item) => {
+    rawProducts.push([item[0], category, item[1] || brand, item[2]]);
+  });
+}
+
+addProducts("Grocery","Tata",[
+["Rice 1kg","India Gate",55],["Sugar 1kg","Madhur",45],["Salt 1kg","Tata",22],["Wheat Flour","Aashirvaad",48],["Toor Dal","Tata Sampann",78],
+["Urad Dal","Popular",82],["Moong Dal","Popular",70],["Chana Dal","Popular",65],["Rava","Elite",35],["Maida","Elite",30],
+["Green Gram","Popular",75],["Black Gram","Popular",80],["Peanut 500g","Popular",65],["Cashew 100g","Tulsi",95],["Badam 100g","Tulsi",120],
+["Kismis 100g","Tulsi",60],["Sunflower Oil 1L","Gold Winner",145],["Groundnut Oil 1L","Idhayam",190],["Coconut Oil 500ml","Parachute",95],["Jaggery","Local",45]
+]);
+
+addProducts("Dairy","Amul",[
+["Milk 500ml","Aavin",28],["Curd 500g","Aavin",35],["Butter 100g","Amul",55],["Cheese Slice","Amul",85],["Paneer 200g","Milky Mist",95],
+["Ghee 500ml","GRB",145],["Lassi","Amul",25],["Flavoured Milk","Cavin's",30],["Yogurt","Nestle",35],["Cream","Amul",65]
+]);
+
+addProducts("Bakery","Britannia",[
+["Bread","Britannia",35],["Brown Bread","Modern",45],["Bun Pack","Modern",30],["Cake Slice","Britannia",25],["Cup Cake","Monginis",25],
+["Rusk","Britannia",45],["Cookies","Sunfeast",30],["Cream Biscuit","Parle",25],["Marie Biscuit","Britannia",30],["Pizza Base","Modern",50]
+]);
+
+addProducts("Snacks","Lays",[
+["Lays Chips","Lays",20],["Kurkure","Kurkure",20],["Bingo","Bingo",20],["Popcorn","Act II",30],["Mixture","A2B",45],
+["Murukku","Aachi",35],["Banana Chips","A1",40],["Masala Peanuts","Haldiram",50],["Noodles","Maggi",15],["Candy","Pulse",10]
+]);
+
+addProducts("Beverages","Coca Cola",[
+["Pepsi 750ml","Pepsi",40],["Coke 750ml","Coca Cola",40],["Sprite 750ml","Sprite",40],["Fanta 750ml","Fanta",40],["7UP 750ml","7UP",40],
+["Water Bottle 1L","Bisleri",20],["Soda","Kinley",20],["Energy Drink","Sting",20],["Apple Juice","Real",25],["Mango Juice","Maaza",30]
+]);
+
+addProducts("Personal Care","Dove",[
+["Bath Soap","Lux",28],["Hand Wash","Dettol",79],["Shampoo","Clinic Plus",3],["Conditioner","Dove",95],["Toothpaste","Colgate",55],
+["Toothbrush","Oral-B",25],["Face Wash","Garnier",99],["Body Lotion","Nivea",120],["Hair Oil","Parachute",45],["Talcum Powder","Ponds",60]
+]);
+
+addProducts("Home Care","Surf Excel",[
+["Detergent Powder","Surf Excel",65],["Detergent Liquid","Ariel",120],["Dishwash Bar","Vim",10],["Dishwash Liquid","Vim",65],["Floor Cleaner","Lizol",95],
+["Phenyl","Trishul",55],["Toilet Cleaner","Harpic",90],["Room Freshener","Odonil",75],["Tissue Roll","Origami",45],["Garbage Bag","Cleanex",60]
+]);
+
+addProducts("Stationery","Classmate",[
+["Notebook","Classmate",40],["Pen","Cello",10],["Pencil","Apsara",5],["Eraser","Nataraj",5],["Sharpener","Nataraj",10],
+["Scale","Camlin",15],["Marker","Camlin",25],["Highlighter","Faber Castell",30],["Glue Stick","Fevicol",25],["Stapler","Kangaro",75]
+]);
+
+addProducts("Electronics","Philips",[
+["USB Cable","Boat",149],["Earphones","Boat",499],["LED Bulb","Philips",99],["Battery Cell","Eveready",25],["Mobile Charger","Samsung",399],
+["Power Bank","Mi",899],["Mouse","Dell",299],["Keyboard","HP",499],["Extension Box","Anchor",249],["Memory Card","SanDisk",349]
+]);
+
+addProducts("Home Appliances","Prestige",[
+["Mixer Grinder","Preethi",1899],["Electric Kettle","Prestige",799],["Iron Box","Bajaj",699],["Table Fan","Usha",1299],["Rice Cooker","Pigeon",1599],
+["Induction Stove","Prestige",1899],["Water Heater","Havells",1499],["Toaster","Philips",999],["Hand Blender","Prestige",899],["Emergency Light","Wipro",799]
+]);
+
+addProducts("Vegetables","Fresh",[
+["Tomato 1kg","Fresh",30],["Onion 1kg","Fresh",35],["Potato 1kg","Fresh",32],["Carrot 500g","Fresh",28],["Beans 500g","Fresh",30],
+["Cabbage","Fresh",25],["Cauliflower","Fresh",35],["Brinjal 500g","Fresh",25],["Cucumber","Fresh",20],["Green Chilli","Fresh",15]
+]);
+
+addProducts("Fruits","Fresh",[
+["Apple 1kg","Fresh",120],["Banana 1doz","Fresh",50],["Orange 1kg","Fresh",80],["Grapes 500g","Fresh",60],["Mango 1kg","Fresh",100],
+["Papaya","Fresh",45],["Pomegranate","Fresh",130],["Watermelon","Fresh",70],["Guava","Fresh",55],["Pineapple","Fresh",75]
+]);
+
+addProducts("Masala","Aachi",[
+["Chicken Masala","Aachi",35],["Sambar Powder","Aachi",40],["Rasam Powder","Sakthi",35],["Turmeric Powder","Aachi",25],["Chilli Powder","Sakthi",30],
+["Pepper Powder","Aachi",45],["Garam Masala","Everest",40],["Biryani Masala","Aachi",50],["Coriander Powder","Sakthi",25],["Jeera Powder","Everest",35]
+]);
+
+addProducts("Baby Care","Johnson",[
+["Baby Soap","Johnson",45],["Baby Oil","Johnson",90],["Baby Powder","Johnson",85],["Diaper Small","Pampers",99],["Diaper Medium","Pampers",120],
+["Baby Wipes","Himalaya",80],["Feeding Bottle","Mee Mee",120],["Baby Shampoo","Himalaya",95],["Baby Cream","Himalaya",75],["Baby Food","Cerelac",185]
+]);
+
+addProducts("Toys","Funskool",[
+["Ball","Funskool",50],["Toy Car","Hot Wheels",99],["Doll","Barbie",199],["Puzzle Game","Funskool",149],["Building Blocks","Lego",299],
+["Teddy Bear","Soft Toy",199],["Cricket Bat","Cosco",249],["Skipping Rope","Cosco",80],["Chess Board","Funskool",199],["Water Gun","Local",60]
+]);
+
+addProducts("Frozen & Instant","Nestle",[
+["Eggs 6pcs","Fresh",45],["Chicken Masala Pack","Suguna",180],["Fish Masala Pack","Fresh",220],["Pickle Bottle","Priya",65],["Jam Bottle","Kissan",85],
+["Honey Bottle","Dabur",150],["Corn Flakes","Kellogg's",130],["Oats","Quaker",95],["Vermicelli","MTR",35],["Pasta","Sunfeast",45]
+]);
+
+addProducts("Sauces & Sweets","Kissan",[
+["Tomato Sauce","Kissan",90],["Soya Sauce","Ching's",65],["Vinegar","Weikfield",45],["Mayonnaise","FunFoods",85],["Chocolate Bar","Dairy Milk",20],
+["Ice Cream Cup","Arun",35],["Frozen Peas","Safal",80],["Sweet Corn","Safal",60],["Papad","Lijjat",50],["Appalam","Aachi",45]
+]);
+
+addProducts("South Indian","Aachi",[
+["Idli Rice","Local",55],["Dosa Batter","ID Fresh",75],["Idli Batter","ID Fresh",70],["Coconut Milk","Dabur",80],["Rock Salt","Tata",25],
+["Sambar Powder","Aachi",40],["Rasam Powder","Aachi",35],["Biryani Masala","Aachi",50],["Chicken 65 Masala","Sakthi",45],["Filter Coffee","Bru",120]
+]);
+
+addProducts("More Grocery","Popular",[
+["Aval 500g","Popular",35],["Pori 250g","Local",25],["Corn Flour","Brown & Polson",40],["Custard Powder","Weikfield",45],["Baking Powder","Weikfield",35],
+["Baking Soda","Local",20],["Vinegar Small","Weikfield",35],["Sevai","Anil",30],["Nattu Sakkarai","Local",60],["Palm Sugar","Local",90]
+]);
+
+let products = rawProducts.map((p, index) => {
+  let warranty = "No Warranty";
+  if (p[1] === "Electronics") warranty = "6 Months Warranty";
+  if (p[1] === "Home Appliances") warranty = "1 Year Warranty";
+
+  return {
+    id: index + 1,
+    name: p[0],
+    category: p[1],
+    brand: p[2],
+    price: p[3],
+    stock: Math.floor(Math.random() * 80) + 20,
+    code: "BDR" + String(index + 1).padStart(4, "0"),
+    discount: Math.floor(Math.random() * 15) + 5,
+    warranty: warranty,
+    image: "https://loremflickr.com/300/300/" + encodeURIComponent(p[0] + " product") + "?random=" + index
+  };
+});
+
+let categories = ["All", ...new Set(products.map(p => p.category))];
+
+function renderCategories() {
+  let box = document.getElementById("categoryBox");
+  box.innerHTML = "";
+  categories.forEach(cat => {
+    box.innerHTML += `
+      <button onclick="setCategory('${cat}')"
+      class="${selectedCategory === cat ? 'bg-purple-700 text-white' : 'border bg-white'} px-4 py-2 rounded-xl font-semibold">
+      ${cat}
+      </button>`;
+  });
+}
+
+function setCategory(category) {
+  selectedCategory = category;
+  renderCategories();
+  renderProducts();
+}
+
+function renderProducts() {
+  let productGrid = document.getElementById("productGrid");
+  let searchValue = document.getElementById("searchInput").value.toLowerCase();
+  productGrid.innerHTML = "";
+
+  let filteredProducts = products.filter(product => {
+    let matchSearch =
+      product.name.toLowerCase().includes(searchValue) ||
+      product.brand.toLowerCase().includes(searchValue) ||
+      product.code.toLowerCase().includes(searchValue);
+
+    let matchCategory = selectedCategory === "All" || product.category === selectedCategory;
+    return matchSearch && matchCategory;
+  });
+
+  filteredProducts.forEach(product => {
+    let finalPrice = Math.round(product.price - (product.price * product.discount / 100));
+
+    productGrid.innerHTML += `
+      <div class="bg-white rounded-2xl shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 p-4 border relative">
+        <span class="absolute top-3 left-3 bg-red-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+          ${product.discount}% OFF
+        </span>
+
+        <div class="bg-purple-50 rounded-xl p-3 mb-3 mt-4">
+          <img src="${product.image}"
+          onerror="this.onerror=null;this.src='https://cdn-icons-png.flaticon.com/512/3081/3081559.png';"
+          class="w-24 h-24 object-contain mx-auto">
+        </div>
+
+        <h3 class="font-bold text-lg text-center">${product.name}</h3>
+        <p class="text-xs text-gray-500 text-center">${product.brand}</p>
+        <p class="text-xs text-gray-400 text-center">${product.code}</p>
+
+        <div class="flex justify-between items-center mt-3">
+          <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-semibold">
+            ${product.category}
+          </span>
+          <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-sm font-bold">
+            ₹${finalPrice}
+          </span>
+        </div>
+
+        <p class="text-center mt-2 text-xs text-gray-400 line-through">MRP ₹${product.price}</p>
+        <p class="text-center mt-1 text-sm">Stock: <b>${product.stock}</b></p>
+        <p class="text-center mt-1 text-xs font-semibold ${product.warranty === 'No Warranty' ? 'text-gray-400' : 'text-purple-700'}">
+          ${product.warranty}
+        </p>
+
+        <button onclick="addToCart(${product.id})"
+        class="mt-3 bg-purple-700 text-white px-3 py-2 w-full rounded-xl hover:bg-purple-800 font-semibold">
+        Add To Cart
+        </button>
+      </div>`;
+  });
+}
+
+function addToCart(id) {
+  let product = products.find(p => p.id === id);
+  if (product.stock <= 0) {
+    alert("Out of Stock");
+    return;
+  }
+
+  let finalPrice = Math.round(product.price - (product.price * product.discount / 100));
+  let cartItem = cart.find(item => item.id === id);
+
+  if (cartItem) cartItem.qty++;
+  else {
+    cart.push({
+      id: product.id,
+      name: product.name,
+      code: product.code,
+      brand: product.brand,
+      price: finalPrice,
+      originalPrice: product.price,
+      discount: product.discount,
+      warranty: product.warranty,
+      qty: 1
+    });
+  }
+
+  product.stock--;
+  renderProducts();
+  renderCart();
+}
+
+function increaseQty(id) {
+  let product = products.find(p => p.id === id);
+  let cartItem = cart.find(item => item.id === id);
+
+  if (product.stock <= 0) {
+    alert("No more stock available");
+    return;
+  }
+
+  cartItem.qty++;
+  product.stock--;
+  renderProducts();
+  renderCart();
+}
+
+function decreaseQty(id) {
+  let product = products.find(p => p.id === id);
+  let cartItem = cart.find(item => item.id === id);
+
+  cartItem.qty--;
+  product.stock++;
+
+  if (cartItem.qty <= 0) cart = cart.filter(item => item.id !== id);
+
+  renderProducts();
+  renderCart();
+}
+
+function renderCart() {
+  let cartDiv = document.getElementById("cart");
+  cartDiv.innerHTML = "";
+
+  let subtotal = 0;
+  let discountAmount = 0;
+
+  if (cart.length === 0) {
+    cartDiv.innerHTML = `
+      <div class="text-center text-gray-400 mt-20">
+        <p class="text-5xl">🛒</p>
+        <p>No items added yet</p>
+      </div>`;
+  }
+
+  cart.forEach(item => {
+    let itemTotal = item.price * item.qty;
+    let itemOriginalTotal = item.originalPrice * item.qty;
+    subtotal += itemOriginalTotal;
+    discountAmount += itemOriginalTotal - itemTotal;
+
+    cartDiv.innerHTML += `
+      <div class="border rounded-xl p-3 mb-3 bg-gray-50">
+        <div class="flex justify-between">
+          <div>
+            <h3 class="font-bold">${item.name}</h3>
+            <p class="text-xs text-gray-500">${item.brand} | ${item.code}</p>
+            <p class="text-xs ${item.warranty === 'No Warranty' ? 'text-gray-400' : 'text-purple-700'}">${item.warranty}</p>
+          </div>
+          <p class="font-bold text-green-700">₹${itemTotal}</p>
+        </div>
+
+        <div class="flex justify-between items-center mt-3">
+          <p>₹${item.price} × ${item.qty}</p>
+          <div class="flex gap-2">
+            <button onclick="decreaseQty(${item.id})" class="bg-red-100 text-red-600 px-3 py-1 rounded-lg font-bold">-</button>
+            <span class="px-2 py-1 font-bold">${item.qty}</span>
+            <button onclick="increaseQty(${item.id})" class="bg-green-100 text-green-600 px-3 py-1 rounded-lg font-bold">+</button>
+          </div>
+        </div>
+      </div>`;
+  });
+
+  let afterDiscount = subtotal - discountAmount;
+  let gst = afterDiscount * 0.05;
+  let total = afterDiscount + gst;
+
+  document.getElementById("subtotal").innerText = subtotal.toFixed(2);
+  document.getElementById("discount").innerText = discountAmount.toFixed(2);
+  document.getElementById("gst").innerText = gst.toFixed(2);
+  document.getElementById("total").innerText = total.toFixed(2);
+}
+
+function createMessage() {
+  let customerName = document.getElementById("customerName").value.trim();
+  let paymentMode = document.querySelector('input[name="payment"]:checked').value;
+  let total = document.getElementById("total").innerText;
+
+  let itemsText = cart.map(item => {
+    return `${item.name} x ${item.qty} = Rs.${item.price * item.qty} | ${item.warranty}`;
+  }).join("\\n");
+
+return "🧾 BILL DROP RECEIPT\n\n" +
+"Receipt No: " + receiptNumber + "\n" +
+"Customer: " + customerName + "\n\n" +
+"---------------------------\n" +
+itemsText + "\n" +
+"---------------------------\n" +
+"Payment Mode: " + paymentMode + "\n" +
+"Total Amount: ₹" + total + "\n\n" +
+"Thank You For Shopping ❤️";
+}
+
+
+function getBillData() {
+  let customerName = document.getElementById("customerName").value.trim();
+  let mobile = document.getElementById("mobile").value.trim();
+  let paymentMode = document.querySelector('input[name="payment"]:checked').value;
+  let subtotal = document.getElementById("subtotal").innerText;
+  let discount = document.getElementById("discount").innerText;
+  let gst = document.getElementById("gst").innerText;
+  let total = document.getElementById("total").innerText;
+  return { receiptNumber, customerName, mobile, paymentMode, subtotal, discount, gst, total, merchantName: "SUBRAMANIAN P", upiId: UPI_ID, createdAt: new Date().toLocaleString(), items: cart.map(item => ({ id: item.id, name: item.name, code: item.code, brand: item.brand, price: item.price, originalPrice: item.originalPrice, discount: item.discount, warranty: item.warranty, qty: item.qty, lineTotal: item.price * item.qty })) };
+}
+
+function renderQRBillPage(bill) {
+  let details = document.getElementById("qrBillDetails");
+  details.innerHTML = `
+    <div class="grid grid-cols-2 gap-3">
+      <p><b>Receipt No:</b></p><p>${bill.receiptNumber}</p>
+      <p><b>Customer:</b></p><p>${bill.customerName}</p>
+      <p><b>Mobile:</b></p><p>${bill.mobile}</p>
+      <p><b>Payment Mode:</b></p><p>${bill.paymentMode}</p>
+      <p><b>Date:</b></p><p>${bill.createdAt}</p>
+    </div>
+    <hr class="my-4">
+    <div class="space-y-3">
+      ${bill.items.map(item => `<div class="border rounded-xl p-3 bg-gray-50"><div class="flex justify-between"><b>${item.name}</b><b>₹${item.lineTotal}</b></div><p class="text-xs text-gray-500">${item.brand} | ${item.code}</p><p class="text-xs ${item.warranty === 'No Warranty' ? 'text-gray-400' : 'text-purple-700'}">${item.warranty}</p><p class="text-xs">₹${item.price} × ${item.qty}</p></div>`).join("")}
+    </div>
+    <hr class="my-4">
+    <div class="space-y-2 text-lg">
+      <div class="flex justify-between"><span>Subtotal</span><b>₹${bill.subtotal}</b></div>
+      <div class="flex justify-between"><span>Discount</span><b>- ₹${bill.discount}</b></div>
+      <div class="flex justify-between"><span>GST 5%</span><b>₹${bill.gst}</b></div>
+      <div class="flex justify-between text-2xl font-bold text-purple-700"><span>Total</span><span>₹${bill.total}</span></div>
+    </div>`;
+}
+
+function generateBill() {
+  let customerName = document.getElementById("customerName").value.trim();
+  let mobile = document.getElementById("mobile").value.trim();
+  let total = document.getElementById("total").innerText;
+  if (cart.length === 0) { alert("Please add products first"); return; }
+  if (customerName === "") { alert("Enter customer name"); return; }
+  if (mobile.length !== 10 || isNaN(mobile)) { alert("Enter valid 10 digit mobile number"); return; }
+  let bill = getBillData();
+  renderQRBillPage(bill);
+  drawQR(bill);
+  sendTelegramMessage(createMessage());
+  todaySales += Number(total);
+  document.getElementById("salesCounter").innerText = todaySales.toFixed(2);
+  document.getElementById("posPage").classList.add("hidden");
+  document.getElementById("qrPage").classList.remove("hidden");
+}
+
+function backToPOS() {
+  document.getElementById("qrPage").classList.add("hidden");
+  document.getElementById("posPage").classList.remove("hidden");
+}
+
+function saveCustomerReceiptToFirebase(bill) {
+  const receiptData = { ...bill, verified: true, verifiedAt: new Date().toLocaleString() };
+  let receipts = JSON.parse(localStorage.getItem("billdrop_customer_receipts") || "[]");
+  receipts.push(receiptData);
+  localStorage.setItem("billdrop_customer_receipts", JSON.stringify(receipts));
+  if (!db) return Promise.resolve("local only");
+  return db.ref("customer_receipts/" + bill.receiptNumber).set(receiptData);
+}
+
+function customerVerifyFromScan() {
+  const bill = window.currentScannedBill;
+  if (!bill) return;
+  saveCustomerReceiptToFirebase(bill).then(() => {
+    document.getElementById("customerVerifyStatus").innerHTML = "✅ Receipt verified and saved";
+    document.getElementById("verifyBtn").disabled = true;
+    document.getElementById("verifyBtn").innerText = "Verified";
+  }).catch(error => { console.log(error); alert("Firebase save error. Check Firebase config/rules."); });
+}
+
+function openUPIPaymentFromScan() {
+  const bill = window.currentScannedBill;
+  if (!bill) return;
+  const upiLink = "upi://pay?pa=" + encodeURIComponent(UPI_ID) + "&pn=SUBRAMANIAN%20P&am=" + encodeURIComponent(bill.total) + "&cu=INR&tn=" + encodeURIComponent("BillDrop " + bill.receiptNumber);
+  window.location.href = upiLink;
+}
+
+function loadCustomerScanPage() {
+  const params = new URLSearchParams(window.location.search);
+  const billParam = params.get("bill");
+  if (!billParam) return;
+  let bill;
+  try { bill = JSON.parse(decodeURIComponent(billParam)); }
+  catch (error) { document.body.innerHTML = "<h2 style='font-family:Arial;padding:30px;'>Invalid QR data</h2>"; return; }
+  window.currentScannedBill = bill;
+  document.getElementById("loginPage").classList.add("hidden");
+  document.getElementById("posPage").classList.add("hidden");
+  document.getElementById("qrPage").classList.add("hidden");
+  const customerPage = document.getElementById("customerPage");
+  customerPage.classList.remove("hidden");
+  customerPage.innerHTML = `
+    <div class="max-w-[430px] mx-auto bg-white rounded-[32px] shadow-2xl overflow-hidden border">
+      <div class="bg-purple-700 text-white p-5 text-center"><h1 class="text-2xl font-extrabold">Bill Drop Pay</h1><p class="text-purple-100 text-sm">Digital Receipt Verification</p></div>
+      <div class="p-6">
+        <div class="text-center mb-5"><p class="text-gray-500 text-sm">Paying to</p><h2 class="text-xl font-extrabold">SUBRAMANIAN P</h2><p class="text-gray-400 text-xs">${bill.receiptNumber}</p><div class="text-4xl font-extrabold mt-4">₹${bill.total}</div><p class="text-sm text-gray-500 mt-1">${bill.paymentMode}</p></div>
+        <div class="bg-gray-50 rounded-2xl p-4 mb-4 text-sm space-y-2"><div class="flex justify-between"><span>Customer</span><b>${bill.customerName}</b></div><div class="flex justify-between"><span>Mobile</span><b>${bill.mobile}</b></div><div class="flex justify-between"><span>Date</span><b>${bill.createdAt}</b></div></div>
+        <h3 class="font-bold mb-3">Bill Items</h3>
+        <div class="space-y-3 max-h-[260px] overflow-y-auto">${bill.items.map(item => `<div class="border rounded-xl p-3"><div class="flex justify-between"><b>${item.name}</b><b>₹${item.lineTotal}</b></div><p class="text-xs text-gray-500">${item.brand} | ${item.code}</p><p class="text-xs ${item.warranty === 'No Warranty' ? 'text-gray-400' : 'text-purple-700'}">${item.warranty}</p><p class="text-xs">₹${item.price} × ${item.qty}</p></div>`).join("")}</div>
+        <div class="border-t mt-5 pt-4 space-y-2"><div class="flex justify-between"><span>Subtotal</span><b>₹${bill.subtotal}</b></div><div class="flex justify-between"><span>Discount</span><b>- ₹${bill.discount}</b></div><div class="flex justify-between"><span>GST 5%</span><b>₹${bill.gst}</b></div><div class="flex justify-between text-xl font-extrabold text-purple-700"><span>Total</span><span>₹${bill.total}</span></div></div>
+        <button id="verifyBtn" onclick="customerVerifyFromScan()" class="bg-purple-700 hover:bg-purple-800 text-white px-4 py-4 mt-5 w-full rounded-xl font-bold">Verify Now</button>
+        ${bill.paymentMode === "UPI" ? `<button onclick="openUPIPaymentFromScan()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-4 mt-3 w-full rounded-xl font-bold">Pay Now</button>` : ""}
+        <p id="customerVerifyStatus" class="text-center text-green-700 font-bold mt-4"></p>
+      </div>
+    </div>`;
+}
+
+function sendTelegramMessage(message) {
+  return fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: message })
+  }).then(res => res.json()).then(data => { if (!data.ok) console.log("Telegram failed: " + data.description); return data; }).catch(error => { console.log("Telegram error:", error); });
+}
+function drawQR(bill) {
+  let canvas = document.getElementById("qr");
+
+  let encodedBill = encodeURIComponent(JSON.stringify(bill));
+
+  let customerLink =
+  "http://172.16.164.99:5501/index.html?bill=" + encodedBill;
+
+  QRCode.toCanvas(canvas, customerLink, { width: 220 });
+}
+
+function clearBill() {
+  cart.forEach(item => {
+    let product = products.find(p => p.id === item.id);
+    product.stock += item.qty;
+  });
+
+  cart = [];
+  document.getElementById("customerName").value = "";
+  document.getElementById("mobile").value = "";
+  document.getElementById("qr").classList.add("hidden");
+
+  receiptNumber = "BDR" + new Date().getFullYear() + Math.floor(Math.random() * 9000 + 1000);
+  document.getElementById("receiptNo").innerText = receiptNumber;
+
+  renderProducts();
+  renderCart();
+}
+
+loadCustomerScanPage();
+renderCategories();
+renderProducts();
+renderCart();
+</script>
+
+</body>
+</html>
