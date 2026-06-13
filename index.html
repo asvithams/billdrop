@@ -147,7 +147,8 @@ const TELEGRAM_CHAT_ID = "7775284485";
 const UPI_ID = "ammubharathi0207@okhdfcbank";
 
 let selectedCategory = "All";
-let todaySales = 0;
+let todaySales = Number(localStorage.getItem("billdrop_today_sales") || 0);
+document.getElementById("salesCounter").innerText = todaySales.toFixed(2);
 let cart = [];
 let receiptNumber = "BDR" + new Date().getFullYear() + Math.floor(Math.random() * 9000 + 1000);
 document.getElementById("receiptNo").innerText = receiptNumber;
@@ -531,6 +532,7 @@ function generateBill() {
   drawQR(bill);
   sendTelegramMessage(createMessage());
   todaySales += Number(total);
+  localStorage.setItem("billdrop_today_sales", todaySales);
   document.getElementById("salesCounter").innerText = todaySales.toFixed(2);
   document.getElementById("posPage").classList.add("hidden");
   document.getElementById("qrPage").classList.remove("hidden");
