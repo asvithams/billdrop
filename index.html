@@ -7,6 +7,7 @@
 
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 </head>
@@ -547,12 +548,85 @@ function viewSavedReceipts() {
     return;
   }
 
-  let text = "";
-  receipts.forEach((r, index) => {
-    text += (index + 1) + ". " + r.receiptNumber + " - ₹" + r.total + "\n";
+  let html = `
+    <div class="min-h-screen bg-gray-100 p-4">
+      <div class="max-w-[430px] mx-auto bg-white rounded-3xl shadow-xl p-5">
+        <h1 class="text-2xl font-extrabold text-purple-700 text-center mb-4">My Receipts</h1>
+        ${receipts.map((r, index) => `
+          <div class="border rounded-2xl p-4 mb-4 bg-gray-50">
+            <h2 class="font-bold text-purple-700">Receipt ${index + 1}</h2>
+            <p><b>Receipt No:</b> ${r.receiptNumber}</p>
+            <p><b>Customer:</b> ${r.customerName}</p>
+            <p><b>Mobile:</b> ${r.mobile}</p>
+            <p><b>Payment:</b> ${r.paymentMode}</p>
+            <p><b>Date:</b> ${r.createdAt}</p>
+
+            <hr class="my-3">
+
+            ${r.items.map(item => `
+              <div class="flex justify-between text-sm mb-2">
+                <span>${item.name} x ${item.qty}<br>
+                <small>${item.brand} | ${item.code} | ${item.warranty}</small></span>
+                <b>₹${item.lineTotal}</b>
+              </div>
+            `).join("")}
+
+            <hr class="my-3">
+            <p><b>Subtotal:</b> ₹${r.subtotal}</p>
+            <p><b>Discount:</b> ₹${r.discount}</p>
+            <p><b>GST:</b> ₹${r.gst}</p>
+            <p class="text-xl font-bold text-purple-700">Total: ₹${r.total}</p>
+
+            <button onclick='downloadReceiptPDF(${JSON.stringify(JSON.stringify(r))})'
+              class="bg-purple-700 text-white px-4 py-3 mt-3 w-full rounded-xl font-bold">
+              Download PDF
+            </button>
+          </div>
+        `).join("")}
+
+        <button onclick="location.reload()" class="border border-purple-700 text-purple-700 px-4 py-3 w-full rounded-xl font-bold">
+          Back
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("customerPage").innerHTML = html;
+}
+  function downloadReceiptPDF(receiptString) {
+  const r = JSON.parse(receiptString);
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  let y = 15;
+
+  doc.setFontSize(18);
+  doc.text("Bill Drop Receipt", 70, y);
+  y += 12;
+
+  doc.setFontSize(11);
+  doc.text("Receipt No: " + r.receiptNumber, 15, y); y += 8;
+  doc.text("Customer: " + r.customerName, 15, y); y += 8;
+  doc.text("Mobile: " + r.mobile, 15, y); y += 8;
+  doc.text("Payment: " + r.paymentMode, 15, y); y += 8;
+  doc.text("Date: " + r.createdAt, 15, y); y += 10;
+
+  doc.text("Items:", 15, y); y += 8;
+
+  r.items.forEach(item => {
+    doc.text(`${item.name} x ${item.qty} - Rs.${item.lineTotal}`, 15, y); y += 7;
+    doc.text(`${item.brand} | ${item.code} | ${item.warranty}`, 20, y); y += 8;
   });
 
-  alert(text);
+  y += 5;
+  doc.text("Subtotal: Rs." + r.subtotal, 15, y); y += 8;
+  doc.text("Discount: Rs." + r.discount, 15, y); y += 8;
+  doc.text("GST 5%: Rs." + r.gst, 15, y); y += 8;
+
+  doc.setFontSize(14);
+  doc.text("Total: Rs." + r.total, 15, y);
+
+  doc.save(r.receiptNumber + ".pdf");
 }
 function saveCustomerReceiptToFirebase(bill) {
   const receiptData = { ...bill, verified: true, verifiedAt: new Date().toLocaleString() };
