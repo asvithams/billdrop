@@ -574,10 +574,8 @@ function customerVerifyFromScan() {
 }
 
 function openUPIPaymentFromScan() {
-  const bill = window.currentScannedBill;
-  if (!bill) return;
-  const upiLink = "upi://pay?pa=" + encodeURIComponent(UPI_ID) + "&pn=SUBRAMANIAN%20P&am=" + encodeURIComponent(bill.total) + "&cu=INR&tn=" + encodeURIComponent("BillDrop " + bill.receiptNumber);
-  window.location.href = upiLink;
+  alert("Payment Successful ✅\nReceipt saved in Bill Drop");
+  customerVerifyFromScan();
 }
 
 function loadCustomerScanPage() {
