@@ -539,7 +539,21 @@ function backToPOS() {
   document.getElementById("qrPage").classList.add("hidden");
   document.getElementById("posPage").classList.remove("hidden");
 }
+function viewSavedReceipts() {
+  let receipts = JSON.parse(localStorage.getItem("billdrop_customer_receipts") || "[]");
 
+  if (receipts.length === 0) {
+    alert("No receipts found");
+    return;
+  }
+
+  let text = "";
+  receipts.forEach((r, index) => {
+    text += (index + 1) + ". " + r.receiptNumber + " - ₹" + r.total + "\n";
+  });
+
+  alert(text);
+}
 function saveCustomerReceiptToFirebase(bill) {
   const receiptData = { ...bill, verified: true, verifiedAt: new Date().toLocaleString() };
   let receipts = JSON.parse(localStorage.getItem("billdrop_customer_receipts") || "[]");
@@ -589,6 +603,9 @@ function loadCustomerScanPage() {
         <div class="space-y-3">${bill.items.map(item => `<div class="border rounded-xl p-3"><div class="flex justify-between"><b>${item.name}</b><b>₹${item.lineTotal}</b></div><p class="text-xs text-gray-500">${item.brand} | ${item.code}</p><p class="text-xs ${item.warranty === 'No Warranty' ? 'text-gray-400' : 'text-purple-700'}">${item.warranty}</p><p class="text-xs">₹${item.price} × ${item.qty}</p></div>`).join("")}</div>
         <div class="border-t mt-5 pt-4 space-y-2"><div class="flex justify-between"><span>Subtotal</span><b>₹${bill.subtotal}</b></div><div class="flex justify-between"><span>Discount</span><b>- ₹${bill.discount}</b></div><div class="flex justify-between"><span>GST 5%</span><b>₹${bill.gst}</b></div><div class="flex justify-between text-xl font-extrabold text-purple-700"><span>Total</span><span>₹${bill.total}</span></div></div>
         <button id="verifyBtn" onclick="customerVerifyFromScan()" class="bg-purple-700 hover:bg-purple-800 text-white px-4 py-4 mt-5 w-full rounded-xl font-bold">Verify Now</button>
+        <button onclick="viewSavedReceipts()" class="border border-purple-700 text-purple-700 px-4 py-4 mt-3 w-full rounded-xl font-bold">
+       My Receipts
+       </button>
         ${bill.paymentMode === "UPI" ? `<button onclick="openUPIPaymentFromScan()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-4 mt-3 w-full rounded-xl font-bold">Pay Now</button>` : ""}
         <p id="customerVerifyStatus" class="text-center text-green-700 font-bold mt-4"></p>
       </div>
